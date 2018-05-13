@@ -3,7 +3,7 @@ var staticCacheName = 'restaurants-app';
 self.addEventListener('install', function (event) {
     event.waitUntil(caches.open(staticCacheName).then(function (cache) {
         return cache.addAll(['js/dbhelper.js', 'js/restaurant_info.js', 'js/main.js', 'css/responsive.css', 'css/styles.css', 'data/restaurants.json',
-            'https://fonts.googleapis.com/css?family=Roboto:400,500,700'
+            'https://fonts.googleapis.com/css?family=Roboto:400,500,700', 'index.html', 'restaurant.html', 'manifest.json'
         ]);
     }));
 });

@@ -2,7 +2,6 @@
  * Common database helper functions.
  */
 class DBHelper {
-
   /**
    * Database URL.
    * Change this to restaurants.json file location on your server.
@@ -11,7 +10,19 @@ class DBHelper {
     const port = 1337 // Change this to your server port
     return {
       "all": `http://localhost:${port}/restaurants`,
-      "single": (id) => `http://localhost:${port}/restaurant/${id}`
+      "single": (id) => `http://localhost:${port}/restaurants/${id}`
+    }
+  }
+
+  /**
+   * IndexedDB parameters
+   */
+
+  static get DB_PARAMS() {
+    return {
+      "db_name": "restaurant_reviews",
+      "object_store": "restaurants",
+      "version": 1
     }
   }
 
@@ -19,28 +30,100 @@ class DBHelper {
    * Fetch all restaurants.
    */
   static fetchRestaurants(callback) {
-    fetch(DBHelper.DATABASE_URL.all).then(response => response.json()).then(
-      json => {
-        console.log(json);
-      }
-    ).catch();
 
-    /*
-    let xhr = new XMLHttpRequest();
-    xhr.open('GET', DBHelper.DATABASE_URL);
-    xhr.onload = () => {
-      if (xhr.status === 200) { // Got a success response from server!
-        const json = JSON.parse(xhr.responseText);
-        const restaurants = json.restaurants;
-        callback(null, restaurants);
-      } else { // Oops!. Got an error from server.
-        const error = (`Request failed. Returned status of ${xhr.status}`);
-        callback(error, null);
+    /** 
+     * If we can not fetch, return json from IndexedDB
+     * If json is not in IndexedDB, return error
+     */
+
+    fetch(DBHelper.DATABASE_URL.all)
+      .then(response => response.json()).then(
+        json => {
+          const restaurants = json;
+          DBHelper.saveRestaurantsToDB(restaurants);
+          return callback(null, restaurants);
+        }
+      ).catch(e => {
+        let cachedRestaurantsData = DBHelper.fetchRestaurantsFromIndexedDB().then((data) => {
+          return callback(null, data);
+        }).catch((e) => {
+          console.error(e);
+          const error = (`Request failed. Returned status of ${e}`);
+          return callback(error, null);
+        });
+      });
+  }
+
+  static saveRestaurantsToDB(restaurants) {
+
+    if (!('indexedDB' in window)) {
+      console.log('This browser doesn\'t support IndexedDB');
+      return false;
+    }
+
+    const DBOpenRequest = window.indexedDB.open(DBHelper.DB_PARAMS.db_name, DBHelper.DB_PARAMS.version);
+    let db;
+
+    DBOpenRequest.onsuccess = (event) => {
+      db = DBOpenRequest.result;
+
+      const tx = db.transaction([DBHelper.DB_PARAMS.object_store], 'readwrite');
+      const store = tx.objectStore(DBHelper.DB_PARAMS.object_store);
+
+      for (let i = 0; i < restaurants.length; i++) {
+        store.add(restaurants[i]);
       }
     };
-    xhr.send();
-    */
+
+    DBOpenRequest.onerror = (e) => {
+      console.error("Error opening local database", e);
+    }
+
+    DBOpenRequest.onupgradeneeded = function (event) {
+      const db = event.target.result;
+
+      const objectStore = db.createObjectStore(DBHelper.DB_PARAMS.object_store, {
+        keyPath: "id"
+      });
+    };
   }
+
+  static fetchRestaurantsFromIndexedDB() {
+    if (!('indexedDB' in window)) {
+      console.log('This browser doesn\'t support IndexedDB');
+      return false;
+    }
+
+    const DBOpenRequest = window.indexedDB.open(DBHelper.DB_PARAMS.db_name, DBHelper.DB_PARAMS.version);
+    let db;
+    let restaurants = [];
+
+    return new Promise((resolve, reject) => {
+      DBOpenRequest.onsuccess = (event) => {
+        db = DBOpenRequest.result;
+
+        const tx = db.transaction([DBHelper.DB_PARAMS.object_store]);
+        const store = tx.objectStore(DBHelper.DB_PARAMS.object_store);
+
+        return store.openCursor().onsuccess = function (event) {
+          var cursor = event.target.result;
+          if (cursor) {
+            restaurants.push(cursor.value);
+            cursor.continue();
+          } else {
+            resolve(restaurants);
+          }
+        };
+      };
+
+      DBOpenRequest.onerror = (e) => {
+        reject("Error opening local database");
+      }
+    })
+
+
+  }
+
 
   /**
    * Fetch a restaurant by its ID.
@@ -161,7 +244,7 @@ class DBHelper {
    * Restaurant image URL.
    */
   static imageUrlForRestaurant(restaurant) {
-    return (`/img/${restaurant.photograph}`);
+    return restaurant.photograph ? (`/img/${restaurant.photograph}`) : false;
   }
 
   /**

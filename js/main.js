@@ -71,6 +71,16 @@ fillCuisinesHTML = (cuisines = self.cuisines) => {
  * Initialize Google map, called from HTML.
  */
 window.initMap = () => {
+  let ww = window.innerWidth;
+
+  if (ww > 860) {
+    startMap();
+  }
+
+  updateRestaurants();
+}
+
+startMap = () => {
   let loc = {
     lat: 40.722216,
     lng: -73.987501
@@ -81,7 +91,7 @@ window.initMap = () => {
     scrollwheel: false
   });
 
-  updateRestaurants();
+  addMarkersToMap();
 }
 
 
@@ -134,6 +144,7 @@ fillRestaurantsHTML = (restaurants = self.restaurants) => {
     ul.append(createRestaurantHTML(restaurant));
   });
   addMarkersToMap();
+  lazyLoad();
 }
 
 /**
@@ -142,13 +153,15 @@ fillRestaurantsHTML = (restaurants = self.restaurants) => {
 createRestaurantHTML = (restaurant) => {
   const li = document.createElement('li');
 
-  const image = document.createElement('img');
-  image.className = 'restaurant-img';
-  const imageName = DBHelper.imageUrlForRestaurant(restaurant);
-  image.src = imageName + ".jpg";
-  image.srcset = imageName + "@2x.jpg 2x";
-  image.alt = "Image of " + restaurant.name;
-  li.append(image);
+  if (DBHelper.imageUrlForRestaurant(restaurant)) {
+    const image = document.createElement('img');
+    image.className = 'restaurant-img lazy';
+    const imageName = DBHelper.imageUrlForRestaurant(restaurant);
+    image.dataset.src = imageName + ".jpg";
+    image.dataset.srcset = imageName + "@2x.jpg 2x";
+    image.alt = "Image of " + restaurant.name;
+    li.append(image);
+  }
 
   const wrapper = document.createElement('div');
   wrapper.className = "restaurant-list-details";
@@ -175,9 +188,43 @@ createRestaurantHTML = (restaurant) => {
 }
 
 /**
+ * Initialize lazy load script for images
+ * It uses intersection observers
+ * https: //developers.google.com/web/updates/2016/04/intersectionobserver
+ * Polyfill for older browsers!
+ */
+
+lazyLoad = () => {
+  var lazyImages = [].slice.call(document.querySelectorAll("img.lazy"));
+
+  if ("IntersectionObserver" in window) {
+    let lazyImageObserver = new IntersectionObserver(function (entries, observer) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          let lazyImage = entry.target;
+          lazyImage.src = lazyImage.dataset.src;
+          lazyImage.srcset = lazyImage.dataset.srcset;
+          lazyImage.classList.remove("lazy");
+          lazyImageObserver.unobserve(lazyImage);
+        }
+      });
+    });
+
+    lazyImages.forEach(function (lazyImage) {
+      lazyImageObserver.observe(lazyImage);
+    });
+  } else {
+    // Possibly fall back to a more compatible method here
+  }
+}
+
+/**
  * Add markers for current restaurants to the map.
  */
 addMarkersToMap = (restaurants = self.restaurants) => {
+  if (!map || !restaurants)
+    return false;
+
   restaurants.forEach(restaurant => {
     // Add marker to the map
     const marker = DBHelper.mapMarkerForRestaurant(restaurant, self.map);
